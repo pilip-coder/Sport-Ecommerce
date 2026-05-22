@@ -1,44 +1,25 @@
-import type { ResultSetHeader } from "mysql2/promise";
-
-import { executeQuery } from "../Config/database.config";
-
-
+import { appDataSource } from "../Config/database.config";
 import { AppError } from "../Core/errors";
-import type { UserEntity, UserRow } from "../Models/user.model";
-
-const mapUserRowToEntity = (row: UserRow): UserEntity => ({
-  id: row.id,
-  email: row.email,
-  fullName: row.full_name,
-  passwordHash: row.password_hash,
-  phone: row.phone,
-  roleName: row.role_name,
-  createdAt: row.created_at,
-});
+import { UserEntity } from "../Models/user.model";
 
 let usersTableReady = false;
 let usersTableInitPromise: Promise<void> | null = null;
 
 export const ensureUsersTable = async (): Promise<void> => {
-  if (usersTableReady) {
+  if (usersTableReady || appDataSource.isInitialized) {
+    usersTableReady = true;
     return;
   }
 
   if (!usersTableInitPromise) {
     usersTableInitPromise = (async () => {
-      await executeQuery<ResultSetHeader>(`
-        CREATE TABLE IF NOT EXISTS users (
-          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-          email VARCHAR(191) NOT NULL UNIQUE,
-          full_name VARCHAR(120) NOT NULL,
-          password_hash VARCHAR(255) NOT NULL,
-          phone VARCHAR(30) NULL,
-          role_name VARCHAR(40) NOT NULL DEFAULT 'customer',
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
-      usersTableReady = true;
+      try {
+        await appDataSource.initialize();
+        usersTableReady = true;
+      } catch (error) {
+        const message = (error as { message?: string })?.message ?? String(error);
+        throw new AppError(`Database unavailable: ${message}`, 503);
+      }
     })().finally(() => {
       usersTableInitPromise = null;
     });
@@ -47,22 +28,13 @@ export const ensureUsersTable = async (): Promise<void> => {
   await usersTableInitPromise;
 };
 
+
 export const findUserByEmail = async (email: string): Promise<UserEntity | null> => {
   await ensureUsersTable();
 
-  const rows = await executeQuery<UserRow[]>(
-    `SELECT id, email, full_name, password_hash, phone, role_name, created_at
-     FROM users
-     WHERE email = ?
-     LIMIT 1`,
-    [email],
-  );
-
-  if (rows.length === 0) {
-    return null;
-  }
-
-  return mapUserRowToEntity(rows[0]);
+  const userRepository = appDataSource.getRepository(UserEntity);
+  const user = await userRepository.findOne({ where: { email } });
+  return user ?? null;
 };
 
 export interface CreateUserInput {
@@ -73,35 +45,61 @@ export interface CreateUserInput {
   roleName: string;
 }
 
+const getNextUserId = async (): Promise<number> => {
+  const rows = (await appDataSource.query(
+    "SELECT COALESCE(MAX(user_id), 0) + 1 AS next_id FROM users",
+  )) as Array<{ next_id: number }>;
+
+  return Number(rows[0]?.next_id ?? 1);
+};
+
+const resolveRoleId = async (roleName: string): Promise<number | null> => {
+  const normalizedRoleName = roleName.trim().toLowerCase();
+
+  const exactRows = (await appDataSource.query(
+    "SELECT role_id FROM roles WHERE LOWER(role_name) = ? LIMIT 1",
+    [normalizedRoleName],
+  )) as Array<{ role_id: number }>;
+
+  if (exactRows.length > 0) {
+    return Number(exactRows[0].role_id);
+  }
+
+  const customerRows = (await appDataSource.query(
+    "SELECT role_id FROM roles WHERE LOWER(role_name) = 'customer' LIMIT 1",
+  )) as Array<{ role_id: number }>;
+
+  if (customerRows.length > 0) {
+    return Number(customerRows[0].role_id);
+  }
+
+  return null;
+};
+
 export const createUser = async (input: CreateUserInput): Promise<UserEntity> => {
   await ensureUsersTable();
 
-  let result: ResultSetHeader;
+  const userRepository = appDataSource.getRepository(UserEntity);
+  const [nextUserId, roleId] = await Promise.all([getNextUserId(), resolveRoleId(input.roleName)]);
+
+  const user = userRepository.create({
+    id: nextUserId,
+    roleId,
+    email: input.email,
+    fullName: input.fullName,
+    passwordHash: input.passwordHash,
+    phone: input.phone,
+  });
+
   try {
-    result = await executeQuery<ResultSetHeader>(
-      `INSERT INTO users (email, full_name, password_hash, phone, role_name)
-       VALUES (?, ?, ?, ?, ?)`,
-      [input.email, input.fullName, input.passwordHash, input.phone, input.roleName],
-    );
+    return await userRepository.save(user);
   } catch (error) {
-    const errorCode = (error as { code?: string }).code;
+    const errorCode = (error as { code?: string; driverError?: { code?: string } }).code
+      ?? (error as { driverError?: { code?: string } }).driverError?.code;
+
     if (errorCode === "ER_DUP_ENTRY") {
       throw new AppError("Email is already registered.", 409);
     }
     throw error;
   }
-
-  const rows = await executeQuery<UserRow[]>(
-    `SELECT id, email, full_name, password_hash, phone, role_name, created_at
-     FROM users
-     WHERE id = ?
-     LIMIT 1`,
-    [result.insertId],
-  );
-
-  if (rows.length === 0) {
-    throw new AppError("Failed to load created user.", 500);
-  }
-
-  return mapUserRowToEntity(rows[0]);
 };

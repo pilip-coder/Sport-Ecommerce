@@ -8,7 +8,7 @@ import { environment } from "./Backend/Config/environment";
 
 
 const server = createServer(app);
-const host = process.env.HOST ?? "localhost";
+const host = process.env.HOST ?? "127.0.0.1";
 let isShuttingDown = false;
 
 server.on("error", (error: NodeJS.ErrnoException) => {

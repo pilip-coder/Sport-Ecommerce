@@ -1,56 +1,40 @@
-import mysql, {
-  type Pool,
-  type QueryResult,
-  type ResultSetHeader,
-  type RowDataPacket,
-} from "mysql2/promise";
+import "reflect-metadata";
 
+import { DataSource } from "typeorm";
 import { environment } from "./environment";
+import { UserEntity } from "../Models/user.model";
 
-
-type QueryParam = string | number | boolean | Date | Buffer | null;
-export type QueryParams = QueryParam[];
-
-export const databasePool: Pool = mysql.createPool({
+export const appDataSource = new DataSource({
+  type: "mysql",
   host: environment.databaseHost,
   port: environment.databasePort,
-  user: environment.databaseUser,
+  username: environment.databaseUser,
   password: environment.databasePassword,
   database: environment.databaseName,
-  connectionLimit: environment.databaseConnectionLimit,
-  waitForConnections: true,
-  queueLimit: 0,
+  synchronize: environment.databaseSynchronize,
+  logging: false,
+  entities: [UserEntity],
+  extra: {
+    connectionLimit: environment.databaseConnectionLimit,
+  },
 });
 
 export const connectDatabase = async (): Promise<void> => {
   try {
-    const connection = await databasePool.getConnection();
-
-    try {
-      await connection.ping();
-      console.log(
-        `MySQL connected: ${environment.databaseHost}:${environment.databasePort}/${environment.databaseName}`,
-      );
-    } finally {
-      connection.release();
+    if (!appDataSource.isInitialized) {
+      await appDataSource.initialize();
     }
+    console.log(
+      `MySQL connected via TypeORM: ${environment.databaseHost}:${environment.databasePort}/${environment.databaseName}`,
+    );
   } catch (error) {
-    console.error("Unable to establish MySQL connection.", error);
+    console.error("Unable to establish MySQL TypeORM connection.", error);
     throw error;
   }
 };
 
 export const closeDatabase = async (): Promise<void> => {
-  await databasePool.end();
+  if (appDataSource.isInitialized) {
+    await appDataSource.destroy();
+  }
 };
-
-export const executeQuery = async <T extends QueryResult = RowDataPacket[]>(
-  sql: string,
-  params: QueryParams = [],
-): Promise<T> => {
-  const [rows] = await databasePool.execute<T>(sql, params);
-  return rows;
-};
-
-export type QueryRows = RowDataPacket[];
-export type QueryWriteResult = ResultSetHeader;

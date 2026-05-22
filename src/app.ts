@@ -28,12 +28,11 @@ app.use((_req, res, next) => {
 });
 app.use(requestLogger);
 
-// Serve the frontend (dev-friendly). This allows visiting http://localhost:3000/login
-// to see the React UI.
+// Serve a dev-friendly frontend entry.
 // Note: keep this CommonJS-safe (no import.meta usage).
 const indexHtmlPath = path.resolve(process.cwd(), "index.html");
 
-// Static file serving so the browser can load /src/Frontend/index.jsx and component JSX.
+// Static file serving so the browser can load frontend assets.
 app.use(express.static(process.cwd()));
 app.use(express.static(path.resolve(process.cwd(), "src")));
 
@@ -42,6 +41,7 @@ app.get(["/", "/login", "/register"], (_req, res) => {
 });
 
 app.get("/health", (_req, res) => {
+
   res.status(200).json({
     status: "ok",
     service: "sport-ecommerce",
@@ -50,11 +50,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    message: "Sport Ecommerce API is running.",
-  });
-});
+
 
 app.get("/api", (_req, res) => {
   res.status(200).json({
