@@ -1,6 +1,15 @@
-import mysql, { Pool, QueryResult, ResultSetHeader, RowDataPacket, } from "mysql2/promise";
+import mysql, {
+  type Pool,
+  type QueryResult,
+  type ResultSetHeader,
+  type RowDataPacket,
+} from "mysql2/promise";
 
 import { environment } from "./environment";
+
+
+type QueryParam = string | number | boolean | Date | Buffer | null;
+export type QueryParams = QueryParam[];
 
 export const databasePool: Pool = mysql.createPool({
   host: environment.databaseHost,
@@ -14,13 +23,20 @@ export const databasePool: Pool = mysql.createPool({
 });
 
 export const connectDatabase = async (): Promise<void> => {
-  const connection = await databasePool.getConnection();
-
   try {
-    await connection.ping();
-    console.log(`MySQL connected: ${environment.databaseHost}:${environment.databasePort}/${environment.databaseName}`);
-  } finally {
-    connection.release();
+    const connection = await databasePool.getConnection();
+
+    try {
+      await connection.ping();
+      console.log(
+        `MySQL connected: ${environment.databaseHost}:${environment.databasePort}/${environment.databaseName}`,
+      );
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("Unable to establish MySQL connection.", error);
+    throw error;
   }
 };
 
@@ -30,16 +46,10 @@ export const closeDatabase = async (): Promise<void> => {
 
 export const executeQuery = async <T extends QueryResult = RowDataPacket[]>(
   sql: string,
-  params: any[] = [],
+  params: QueryParams = [],
 ): Promise<T> => {
-  const connection = await databasePool.getConnection();
-
-  try {
-    const [rows] = await connection.execute(sql, params);
-    return rows as T;
-  } finally {
-    connection.release();
-  }
+  const [rows] = await databasePool.execute<T>(sql, params);
+  return rows;
 };
 
 export type QueryRows = RowDataPacket[];

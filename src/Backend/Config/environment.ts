@@ -1,6 +1,10 @@
 /// <reference types="node" />
 
+// Ensure this backend-only config remains CommonJS-safe even if tsconfig/module settings change.
+// (Avoid using import.meta or other ESM-only features.)
+
 const toPositiveInt = (value: string | undefined, fallback: number): number => {
+
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };

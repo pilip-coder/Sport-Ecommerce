@@ -1,14 +1,7 @@
-import { Router } from "express";
+import type { Express } from "express";
 
-import { AuthController } from "../Controllers/auth.controller";
-import { AuthRepository } from "../Repositories/auth.repository";
-import { createAuthRouter } from "../Routes/auth.routes";
-import { AuthService } from "../Services/auth.service";
+import authRouter from "../Routes/auth.route";
 
-export const createAuthModule = (): Router => {
-  const authRepository = new AuthRepository();
-  const authService = new AuthService(authRepository);
-  const authController = new AuthController(authService);
-
-  return createAuthRouter(authController);
+export const registerAuthModule = (app: Express): void => {
+  app.use("/api/auth", authRouter);
 };

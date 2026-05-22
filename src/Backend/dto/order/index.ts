@@ -1,12 +1,9 @@
-export interface CreateOrderItemDto {
-  variantId: number;
+export interface OrderItemDto {
+  productId: number;
   quantity: number;
-  price: number;
 }
 
 export interface CreateOrderDto {
   userId: number;
-  addressId?: number | null;
-  totalAmount?: number;
-  items: CreateOrderItemDto[];
+  items: OrderItemDto[];
 }
