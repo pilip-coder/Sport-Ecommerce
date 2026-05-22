@@ -2,13 +2,9 @@ import path from "node:path";
 
 import express from "express";
 
-import authRoutes from "./routes/auth.routes";
-import catalogRoutes from "./routes/catalog.routes";
-import inventoryRoutes from "./routes/inventory.routes";
-import orderRoutes from "./routes/order.routes";
-import paymentRoutes from "./routes/payment.routes";
 import { errorHandler, notFoundHandler } from "./core/errors";
 import { requestLogger } from "./core/middleware";
+import { registerModules } from "./modules/app.module";
 
 const app = express();
 const viewsPath = path.join(process.cwd(), "src", "views");
@@ -45,11 +41,7 @@ app.get("/payments", (_req, res) => {
   res.sendFile(path.join(viewsPath, "payments.html"));
 });
 
-app.use("/api/auth", authRoutes);
-app.use("/api/catalog", catalogRoutes);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/payments", paymentRoutes);
+registerModules(app);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
