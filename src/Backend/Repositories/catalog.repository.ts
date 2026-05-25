@@ -79,6 +79,7 @@ const ensureFavoritesTable = async (): Promise<void> => {
 export interface ProductFilters {
   search?: string;
   category?: string;
+  includeInactive?: boolean;
 }
 
 const productSelect = `
@@ -101,7 +102,7 @@ const productSelect = `
 export const findProducts = async (filters: ProductFilters): Promise<ProductRecord[]> => {
   await ensureDatabase();
 
-  const where = ["p.is_active = 1"];
+  const where = filters.includeInactive ? ["1 = 1"] : ["p.is_active = 1"];
   const params: unknown[] = [];
 
   if (filters.search?.trim()) {
@@ -129,6 +130,28 @@ export const findProductById = async (productId: number): Promise<ProductRecord 
   )) as ProductRecord[];
 
   return rows[0] ?? null;
+};
+
+export const findAdminProductById = async (productId: number): Promise<ProductRecord | null> => {
+  await ensureDatabase();
+
+  const rows = (await appDataSource.query(
+    `${productSelect} WHERE p.product_id = ? LIMIT 1`,
+    [productId],
+  )) as ProductRecord[];
+
+  return rows[0] ?? null;
+};
+
+export const findCategoryIdByName = async (categoryName: string): Promise<number | null> => {
+  await ensureDatabase();
+
+  const rows = (await appDataSource.query(
+    "SELECT category_id AS categoryId FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1",
+    [categoryName],
+  )) as Array<{ categoryId: number }>;
+
+  return rows[0]?.categoryId == null ? null : Number(rows[0].categoryId);
 };
 
 export const findProductVariants = async (productId: number): Promise<ProductVariantRecord[]> => {
@@ -191,6 +214,132 @@ const getNextId = async (tableName: string, idColumn: string): Promise<number> =
   )) as Array<{ nextId: number }>;
 
   return Number(rows[0]?.nextId ?? 1);
+};
+
+export interface CreateAdminProductInput {
+  categoryId: number | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  basePrice: number;
+  imageUrl: string | null;
+  isActive: boolean;
+}
+
+export interface UpdateAdminProductInput {
+  categoryId?: number | null;
+  name?: string;
+  slug?: string;
+  description?: string | null;
+  basePrice?: number;
+  imageUrl?: string | null;
+  isActive?: boolean;
+}
+
+export const createAdminProduct = async (input: CreateAdminProductInput): Promise<ProductRecord> => {
+  await ensureDatabase();
+
+  const productId = await getNextId("products", "product_id");
+
+  await appDataSource.query(
+    `
+      INSERT INTO products (
+        product_id,
+        category_id,
+        name,
+        slug,
+        description,
+        base_price,
+        image_url,
+        is_active,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `,
+    [
+      productId,
+      input.categoryId,
+      input.name,
+      input.slug,
+      input.description,
+      input.basePrice,
+      input.imageUrl,
+      input.isActive ? 1 : 0,
+    ],
+  );
+
+  const product = await findAdminProductById(productId);
+  if (!product) {
+    throw new AppError("Product was created but could not be loaded.", 500);
+  }
+
+  return product;
+};
+
+export const updateAdminProduct = async (
+  productId: number,
+  input: UpdateAdminProductInput,
+): Promise<ProductRecord> => {
+  await ensureDatabase();
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+
+  if (input.categoryId !== undefined) {
+    updates.push("category_id = ?");
+    params.push(input.categoryId ?? null);
+  }
+  if (input.name != null) {
+    updates.push("name = ?");
+    params.push(input.name);
+  }
+  if (input.slug != null) {
+    updates.push("slug = ?");
+    params.push(input.slug);
+  }
+  if (input.description !== undefined) {
+    updates.push("description = ?");
+    params.push(input.description ?? null);
+  }
+  if (input.basePrice != null) {
+    updates.push("base_price = ?");
+    params.push(input.basePrice);
+  }
+  if (input.imageUrl !== undefined) {
+    updates.push("image_url = ?");
+    params.push(input.imageUrl ?? null);
+  }
+  if (input.isActive != null) {
+    updates.push("is_active = ?");
+    params.push(input.isActive ? 1 : 0);
+  }
+
+  if (updates.length > 0) {
+    params.push(productId);
+    await appDataSource.query(
+      `UPDATE products SET ${updates.join(", ")}, updated_at = NOW() WHERE product_id = ?`,
+      params,
+    );
+  }
+
+  const product = await findAdminProductById(productId);
+  if (!product) {
+    throw new AppError("Product not found.", 404);
+  }
+
+  return product;
+};
+
+export const deleteAdminProduct = async (productId: number): Promise<boolean> => {
+  await ensureDatabase();
+
+  const result = (await appDataSource.query(
+    "UPDATE products SET is_active = 0, updated_at = NOW() WHERE product_id = ?",
+    [productId],
+  )) as ResultSetHeader;
+
+  return result.affectedRows > 0;
 };
 
 export interface CreateProductOrderInput {

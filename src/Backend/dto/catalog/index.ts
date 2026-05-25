@@ -36,3 +36,23 @@ export interface BuyProductDto {
 export interface FavoriteProductDto {
   userId: number;
 }
+
+export interface AdminCreateProductDto {
+  name: string;
+  description?: string | null;
+  price: number;
+  imageUrl?: string | null;
+  category?: string | null;
+  categoryId?: number | null;
+  isActive?: boolean;
+}
+
+export interface AdminUpdateProductDto {
+  name?: string;
+  description?: string | null;
+  price?: number;
+  imageUrl?: string | null;
+  category?: string | null;
+  categoryId?: number | null;
+  isActive?: boolean;
+}

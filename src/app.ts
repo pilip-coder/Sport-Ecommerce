@@ -7,6 +7,7 @@ import { environment } from "./Backend/Config/environment";
 
 import { errorHandler, notFoundHandler } from "./Backend/Core/errors";
 import { requestLogger } from "./Backend/Core/middleware";
+import { registerAdminModule } from "./Backend/Modules/admin.module";
 import { registerAuthModule } from "./Backend/Modules/auth.module";
 import { registerCatalogModule } from "./Backend/Modules/catalog.module";
 
@@ -62,6 +63,7 @@ app.get("/api", (_req, res) => {
 
 registerAuthModule(app);
 registerCatalogModule(app);
+registerAdminModule(app);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
