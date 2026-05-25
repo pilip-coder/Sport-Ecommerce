@@ -1,5 +1,7 @@
 import type { Express } from "express";
 
-export const registerCatalogModule = (_app: Express): void => {
-  // Reserved for catalog routes.
+import catalogRouter from "../Routes/catalog.route";
+
+export const registerCatalogModule = (app: Express): void => {
+  app.use("/api", catalogRouter);
 };
