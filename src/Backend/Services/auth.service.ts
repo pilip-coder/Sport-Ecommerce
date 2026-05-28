@@ -118,6 +118,14 @@ const createAccessToken = (user: UserEntity): string => {
   return `${header}.${payload}.${signature}`;
 };
 
+const normalizeRoleName = (roleName: string | undefined): string => {
+  return roleName?.trim().toLowerCase() ?? "customer";
+};
+
+const isPublicRoleName = (roleName: string): boolean => {
+  return roleName === "customer" || roleName === "staff";
+};
+
 export interface AuthResult {
   user: AuthUserResponse;
   accessToken: string;
@@ -126,7 +134,17 @@ export interface AuthResult {
 export const registerUser = async (payload: RegisterDto): Promise<AuthResult> => {
   validateRegisterPayload(payload);
 
+  const requestedRoleName = normalizeRoleName(payload.roleName);
+  if (!isPublicRoleName(requestedRoleName)) {
+    if (requestedRoleName === "admin") {
+      throw new AppError("Public registration cannot create admin accounts.", 403);
+    }
+
+    throw new AppError("Public registration only allows customer or staff accounts.", 400);
+  }
+
   const email = normalizeEmail(payload.email);
+
   const existingUser = await findUserByEmail(email);
 
   if (existingUser) {
@@ -140,7 +158,7 @@ export const registerUser = async (payload: RegisterDto): Promise<AuthResult> =>
     fullName: payload.fullName.trim(),
     passwordHash,
     phone: payload.phone?.trim() || null,
-    roleName: payload.roleName?.trim() || "customer",
+    roleName: requestedRoleName,
   });
 
   return {

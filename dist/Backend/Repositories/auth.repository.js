@@ -51,8 +51,19 @@ const resolveRoleId = async (roleName) => {
     }
     return null;
 };
+const countAdminUsers = async () => {
+    const rows = (await database_config_1.appDataSource.query("SELECT COUNT(*) AS total FROM users WHERE role_id = 1"));
+    return Number(rows[0]?.total ?? 0);
+};
 const createUser = async (input) => {
     await (0, exports.ensureUsersTable)();
+    const normalizedRoleName = input.roleName.trim().toLowerCase();
+    if (normalizedRoleName === "admin") {
+        const existingAdmins = await countAdminUsers();
+        if (existingAdmins > 0) {
+            throw new errors_1.AppError("Admin account already exists.", 409);
+        }
+    }
     const userRepository = database_config_1.appDataSource.getRepository(user_model_1.UserEntity);
     const [nextUserId, roleId] = await Promise.all([getNextUserId(), resolveRoleId(input.roleName)]);
     const user = userRepository.create({

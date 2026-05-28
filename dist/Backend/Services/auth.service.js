@@ -88,8 +88,21 @@ const createAccessToken = (user) => {
         .digest("base64url");
     return `${header}.${payload}.${signature}`;
 };
+const normalizeRoleName = (roleName) => {
+    return roleName?.trim().toLowerCase() ?? "customer";
+};
+const isPublicRoleName = (roleName) => {
+    return roleName === "customer" || roleName === "staff";
+};
 const registerUser = async (payload) => {
     validateRegisterPayload(payload);
+    const requestedRoleName = normalizeRoleName(payload.roleName);
+    if (!isPublicRoleName(requestedRoleName)) {
+        if (requestedRoleName === "admin") {
+            throw new errors_1.AppError("Public registration cannot create admin accounts.", 403);
+        }
+        throw new errors_1.AppError("Public registration only allows customer or staff accounts.", 400);
+    }
     const email = normalizeEmail(payload.email);
     const existingUser = await (0, auth_repository_1.findUserByEmail)(email);
     if (existingUser) {
@@ -101,7 +114,7 @@ const registerUser = async (payload) => {
         fullName: payload.fullName.trim(),
         passwordHash,
         phone: payload.phone?.trim() || null,
-        roleName: payload.roleName?.trim() || "customer",
+        roleName: requestedRoleName,
     });
     return {
         user: toAuthUserResponse(createdUser),

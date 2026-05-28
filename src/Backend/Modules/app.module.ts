@@ -12,10 +12,16 @@ export const registerModules = (app: Express): void => {
 =======
 import { registerCategoryModule } from "./category.module";
 import { registerCatalogModule } from "./catalog.module";
+import { registerUserModule } from "./user.module";
 
 export const registerModules = (app: Express): void => {
   registerAuthModule(app);
   registerCategoryModule(app);
   registerCatalogModule(app);
+<<<<<<< HEAD
 >>>>>>> 691aaadec9880ae159688a8378a773650dc96168
+=======
+  registerUserModule(app);
+>>>>>>> 7fcfc226682f4b9c92b267a431a325363e0e8150
 };
+
