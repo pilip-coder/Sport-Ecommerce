@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.errorHandler = exports.notFoundHandler = exports.AppError = void 0;
+const environment_1 = require("../../Config/environment");
 class AppError extends Error {
     constructor(message, statusCode = 400) {
         super(message);
@@ -19,6 +20,13 @@ const errorHandler = (error, _req, res, _next) => {
         return;
     }
     console.error(error);
+    if (environment_1.environment.nodeEnv !== "production") {
+        res.status(500).json({
+            message: "Internal server error.",
+            error: error.message,
+        });
+        return;
+    }
     res.status(500).json({ message: "Internal server error." });
 };
 exports.errorHandler = errorHandler;

@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const category_controller_1 = require("../Controllers/category.controller");
+const guards_1 = require("../Core/guards");
+const categoryRouter = (0, express_1.Router)();
+categoryRouter.get("/", category_controller_1.listCategories);
+categoryRouter.get("/:slugOrId", category_controller_1.getCategoryBySlugOrId);
+categoryRouter.post("/", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin", "Staff"), category_controller_1.createCategoryByAdminOrStaff);
+categoryRouter.put("/:id", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin", "Staff"), category_controller_1.updateCategoryByAdminOrStaff);
+categoryRouter.delete("/:id", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin", "Staff"), category_controller_1.deleteCategoryByAdminOrStaff);
+exports.default = categoryRouter;
