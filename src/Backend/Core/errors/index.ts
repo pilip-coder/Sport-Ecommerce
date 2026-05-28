@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { environment } from "../../Config/environment";
 
 export class AppError extends Error {
   constructor(
@@ -26,6 +27,13 @@ export const errorHandler = (
   }
 
   console.error(error);
+  if (environment.nodeEnv !== "production") {
+    res.status(500).json({
+      message: "Internal server error.",
+      error: error.message,
+    });
+    return;
+  }
+
   res.status(500).json({ message: "Internal server error." });
 };
-

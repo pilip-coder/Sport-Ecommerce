@@ -1,5 +1,7 @@
 import type { Express } from "express";
 
-export const registerOrderModule = (_app: Express): void => {
-  // Reserved for order routes.
+import orderRouter from "../Routes/order.route";
+
+export const registerOrderModule = (app: Express): void => {
+  app.use("/api/orders", orderRouter);
 };

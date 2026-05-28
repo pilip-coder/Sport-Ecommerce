@@ -1,17 +1,14 @@
 import type { RowDataPacket } from "mysql2/promise";
 
 export interface OrderItemRow extends RowDataPacket {
-  id: number;
+  order_item_id: number;
   order_id: number;
-  product_id: number;
-  product_variant_id: number | null;
-  product_name: string;
+  variant_id: number;
+  product_id?: number;
+  product_name?: string;
   sku: string | null;
   quantity: number;
-  unit_price: number;
-  total_price: number;
-  created_at: Date;
-  updated_at: Date;
+  price: number;
 }
 
 export interface OrderItemEntity {

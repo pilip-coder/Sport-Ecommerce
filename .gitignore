@@ -1,1 +1,9 @@
 node_modules/
+dist/
+package-lock.json
+.env
+package.json
+tsconfig.server.json
+server.stderr.log
+server.stdout.log
+postman/
