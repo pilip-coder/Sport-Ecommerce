@@ -41,7 +41,7 @@ export const environment: EnvironmentConfig = {
   databasePort: toNumber(process.env.DB_PORT, 3306),
   databaseUser: process.env.DB_USER ?? "root",
   databasePassword: process.env.DB_PASSWORD ?? "",
-  databaseName: process.env.DB_NAME ?? "sports_ecommerce",
+  databaseName: process.env.DB_NAME ?? "sport_ecommerce",
   databaseConnectionLimit: toNumber(process.env.DB_CONNECTION_LIMIT, 10),
   databaseSynchronize: toBoolean(process.env.DB_SYNCHRONIZE, false),
   jwtSecret: process.env.JWT_SECRET ?? "sport-ecommerce-secret",

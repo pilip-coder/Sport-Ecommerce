@@ -21,3 +21,29 @@ export interface StockEntity {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface CreateStockInput {
+  productId: number;
+  productVariantId?: number | null;
+  quantity: number;
+  reservedQuantity?: number;
+  warehouseLocation?: string | null;
+}
+
+export interface UpdateStockInput {
+  productVariantId?: number | null;
+  quantity?: number;
+  reservedQuantity?: number;
+  warehouseLocation?: string | null;
+}
+
+export const mapStockRowToEntity = (row: StockRow): StockEntity => ({
+  id: row.id,
+  productId: row.product_id,
+  productVariantId: row.product_variant_id,
+  quantity: row.quantity,
+  reservedQuantity: row.reserved_quantity,
+  warehouseLocation: row.warehouse_location,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});

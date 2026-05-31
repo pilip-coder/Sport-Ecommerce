@@ -72,6 +72,9 @@ export interface CreateProductDto {
   categoryId?: string | number | null;
   imageUrl?: string;
   status?: string;
+  quantity?: string | number;
+  sku?: string;
+  variantName?: string;
 }
 
 export interface UpdateProductDto {

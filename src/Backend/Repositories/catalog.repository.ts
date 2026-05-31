@@ -15,6 +15,7 @@ import type {
 let catalogDbReady = false;
 let catalogDbInitPromise: Promise<void> | null = null;
 let catalogSchemaPromise: Promise<CatalogSchema> | null = null;
+let stockSchemaPromise: Promise<StockSchema | null> | null = null;
 
 const SORT_TO_SQL: Record<ProductSortBy, string> = {
   newest: "p.created_at DESC",
@@ -48,6 +49,8 @@ interface CatalogSchema {
   variantColorColumn: string | null;
   variantActiveColumn: string | null;
   variantActiveIsText: boolean;
+  variantCreatedAtColumn: string | null;
+  variantUpdatedAtColumn: string | null;
   reviewIdColumn: string;
   reviewProductIdColumn: string;
   reviewUserIdColumn: string;
@@ -108,6 +111,14 @@ interface ProductReviewPreviewRow extends RowDataPacket {
 
 interface CountRow extends RowDataPacket {
   total: number | string;
+}
+
+interface StockSchema {
+  tableName: string;
+  stockIdColumn: string | null;
+  variantIdColumn: string;
+  quantityColumn: string;
+  updatedAtColumn: string | null;
 }
 
 export interface ProductListRepositoryResult {
@@ -357,6 +368,8 @@ const resolveCatalogSchema = async (): Promise<CatalogSchema> => {
     const variantSizeColumn = pickOptionalColumn(columnsByTable, "product_variants", ["size"]);
     const variantColorColumn = pickOptionalColumn(columnsByTable, "product_variants", ["color"]);
     const variantActiveColumn = pickOptionalColumn(columnsByTable, "product_variants", ["is_active", "active"]);
+    const variantCreatedAtColumn = pickOptionalColumn(columnsByTable, "product_variants", ["created_at"]);
+    const variantUpdatedAtColumn = pickOptionalColumn(columnsByTable, "product_variants", ["updated_at"]);
     const reviewTitleColumn = pickOptionalColumn(columnsByTable, "reviews", ["title", "review_title"]);
     const reviewCommentColumn = pickExistingColumn(columnsByTable, "reviews", ["comment", "review_comment"]);
     const reviewApprovedColumn = pickOptionalColumn(columnsByTable, "reviews", ["is_approved", "approved"]);
@@ -386,6 +399,8 @@ const resolveCatalogSchema = async (): Promise<CatalogSchema> => {
       variantColorColumn,
       variantActiveColumn,
       variantActiveIsText: isTextColumnType(getColumnType(columnTypesByTable, "product_variants", variantActiveColumn) ?? undefined),
+      variantCreatedAtColumn,
+      variantUpdatedAtColumn,
       reviewIdColumn: pickExistingColumn(columnsByTable, "reviews", ["id", "review_id"]),
       reviewProductIdColumn: pickExistingColumn(columnsByTable, "reviews", ["product_id", "productId"]),
       reviewUserIdColumn: pickExistingColumn(columnsByTable, "reviews", ["user_id", "userId"]),
@@ -402,6 +417,56 @@ const resolveCatalogSchema = async (): Promise<CatalogSchema> => {
     return await catalogSchemaPromise;
   } catch (error) {
     catalogSchemaPromise = null;
+    throw error;
+  }
+};
+
+const resolveStockSchema = async (): Promise<StockSchema | null> => {
+  if (stockSchemaPromise) {
+    return stockSchemaPromise;
+  }
+
+  stockSchemaPromise = (async () => {
+    const rows = (await appDataSource.query(
+      `
+        SELECT
+          TABLE_NAME AS table_name,
+          COLUMN_NAME AS column_name,
+          DATA_TYPE AS data_type,
+          COLUMN_TYPE AS column_type
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ?
+          AND TABLE_NAME IN ('stock', 'stocks')
+      `,
+      [environment.databaseName],
+    )) as InformationSchemaColumnRow[];
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const columnsByTable = new Map<string, Set<string>>();
+    for (const row of rows) {
+      if (!columnsByTable.has(row.table_name)) {
+        columnsByTable.set(row.table_name, new Set<string>());
+      }
+      columnsByTable.get(row.table_name)?.add(row.column_name);
+    }
+
+    const tableName = columnsByTable.has("stock") ? "stock" : "stocks";
+    return {
+      tableName,
+      stockIdColumn: pickOptionalColumn(columnsByTable, tableName, ["stock_id", "id"]),
+      variantIdColumn: pickExistingColumn(columnsByTable, tableName, ["variant_id", "product_variant_id"]),
+      quantityColumn: pickExistingColumn(columnsByTable, tableName, ["quantity"]),
+      updatedAtColumn: pickOptionalColumn(columnsByTable, tableName, ["updated_at"]),
+    };
+  })();
+
+  try {
+    return await stockSchemaPromise;
+  } catch (error) {
+    stockSchemaPromise = null;
     throw error;
   }
 };
@@ -840,6 +905,9 @@ export interface CreateProductRepositoryInput {
   categoryId: number | null;
   imageUrl: string | null;
   status?: string;
+  initialQuantity?: number;
+  variantSku?: string;
+  variantName?: string;
 }
 
 export interface UpdateProductRepositoryInput {
@@ -859,6 +927,104 @@ const getNextProductId = async (productIdSql: string): Promise<number> => {
   )) as Array<RowDataPacket & { next_id: number | string }>;
 
   return toNumber(rows[0]?.next_id, 1);
+};
+
+const getNextTableId = async (tableName: string, idColumn: string): Promise<number> => {
+  const tableSql = quoteIdentifier(tableName);
+  const idSql = quoteIdentifier(idColumn);
+  const rows = (await appDataSource.query(
+    `SELECT COALESCE(MAX(${idSql}), 0) + 1 AS next_id FROM ${tableSql}`,
+  )) as Array<RowDataPacket & { next_id: number | string }>;
+
+  return toNumber(rows[0]?.next_id, 1);
+};
+
+const createDefaultVariantAndStock = async (
+  productId: number,
+  input: CreateProductRepositoryInput,
+  schema: CatalogSchema,
+): Promise<void> => {
+  if (input.initialQuantity === undefined) {
+    return;
+  }
+
+  const productVariantId = await getNextTableId("product_variants", schema.variantIdColumn);
+  const variantColumns = [
+    quoteIdentifier(schema.variantIdColumn),
+    quoteIdentifier(schema.variantProductIdColumn),
+    quoteIdentifier(schema.variantSkuColumn),
+    quoteIdentifier(schema.variantPriceColumn),
+  ];
+  const variantPlaceholders = ["?", "?", "?", "?"];
+  const variantValues: Array<string | number | null> = [
+    productVariantId,
+    productId,
+    input.variantSku || `${input.slug}-${productId}`,
+    input.basePrice,
+  ];
+
+  if (schema.variantNameColumn) {
+    variantColumns.push(quoteIdentifier(schema.variantNameColumn));
+    variantPlaceholders.push("?");
+    variantValues.push(input.variantName || "Default");
+  }
+
+  if (schema.variantActiveColumn) {
+    variantColumns.push(quoteIdentifier(schema.variantActiveColumn));
+    variantPlaceholders.push("?");
+    variantValues.push(getActiveWriteValue(true, schema.variantActiveIsText));
+  }
+
+  if (schema.variantCreatedAtColumn) {
+    variantColumns.push(quoteIdentifier(schema.variantCreatedAtColumn));
+    variantPlaceholders.push("NOW()");
+  }
+
+  if (schema.variantUpdatedAtColumn) {
+    variantColumns.push(quoteIdentifier(schema.variantUpdatedAtColumn));
+    variantPlaceholders.push("NOW()");
+  }
+
+  await appDataSource.query(
+    `
+      INSERT INTO product_variants (
+        ${variantColumns.join(", ")}
+      ) VALUES (${variantPlaceholders.join(", ")})
+    `,
+    variantValues,
+  );
+
+  const stockSchema = await resolveStockSchema();
+  if (!stockSchema) {
+    return;
+  }
+
+  const stockColumns = [
+    quoteIdentifier(stockSchema.variantIdColumn),
+    quoteIdentifier(stockSchema.quantityColumn),
+  ];
+  const stockPlaceholders = ["?", "?"];
+  const stockValues: Array<number> = [productVariantId, input.initialQuantity];
+
+  if (stockSchema.stockIdColumn) {
+    stockColumns.unshift(quoteIdentifier(stockSchema.stockIdColumn));
+    stockPlaceholders.unshift("?");
+    stockValues.unshift(await getNextTableId(stockSchema.tableName, stockSchema.stockIdColumn));
+  }
+
+  if (stockSchema.updatedAtColumn) {
+    stockColumns.push(quoteIdentifier(stockSchema.updatedAtColumn));
+    stockPlaceholders.push("NOW()");
+  }
+
+  await appDataSource.query(
+    `
+      INSERT INTO ${quoteIdentifier(stockSchema.tableName)} (
+        ${stockColumns.join(", ")}
+      ) VALUES (${stockPlaceholders.join(", ")})
+    `,
+    stockValues,
+  );
 };
 
 const findProductById = async (productId: number): Promise<ProductAdminRow | null> => {
@@ -970,6 +1136,8 @@ export const createProductInRepository = async (
     `,
     values,
   );
+
+  await createDefaultVariantAndStock(nextProductId, input, schema);
 
   return nextProductId;
 };

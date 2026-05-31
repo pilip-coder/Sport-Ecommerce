@@ -226,6 +226,19 @@ const toOptionalPrice = (value: string | number | undefined): number | undefined
   return parsed;
 };
 
+const toOptionalQuantity = (value: string | number | undefined): number | undefined => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new AppError("quantity must be a non-negative integer.", 400);
+  }
+
+  return parsed;
+};
+
 const toOptionalCategoryId = (
   value: string | number | null | undefined,
 ): number | null | undefined => {
@@ -343,6 +356,9 @@ export const createProduct = async (
   const description = payload.description?.trim() || null;
   const imageUrl = uploadedImageUrl || payload.imageUrl?.trim() || null;
   const status = payload.status?.trim() || undefined;
+  const initialQuantity = toOptionalQuantity(payload.quantity) ?? 0;
+  const variantSku = payload.sku?.trim() || undefined;
+  const variantName = payload.variantName?.trim() || undefined;
 
   await assertProductSlugAvailable(slug);
   const productId = await createProductInRepository({
@@ -353,6 +369,9 @@ export const createProduct = async (
     categoryId,
     imageUrl,
     status,
+    initialQuantity,
+    variantSku,
+    variantName,
   });
 
   const item = await getProductDetailFromRepository(String(productId));

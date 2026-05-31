@@ -92,4 +92,3 @@ export const getProductByCategory = asyncHandler(
     res.status(200).json(result);
   },
 );
-
