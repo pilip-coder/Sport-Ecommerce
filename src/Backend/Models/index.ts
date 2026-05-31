@@ -1,7 +1,5 @@
 export * from "./address.model";
 export * from "./audit-log.model";
-export * from "./cart-item.model";
-export * from "./cart.model";
 export * from "./category.model";
 export * from "./order-item.model";
 export * from "./order.model";

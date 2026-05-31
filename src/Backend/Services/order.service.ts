@@ -8,7 +8,6 @@ import {
   findAllOrders,
   findItemsByOrderId,
   findOrderById,
-  findFirstUserId,
   seedPostmanCatalog,
   updateOrderStatus,
 } from "../Repositories/order.repository";
@@ -40,12 +39,11 @@ const validateCreateOrderPayload = (payload: CreateOrderDto): void => {
   }
 };
 
-export const createUserOrder = async (payload: CreateOrderDto): Promise<{ order: OrderEntity; items: OrderItemEntity[] }> => {
+export const createUserOrder = async (userId: number, payload: CreateOrderDto): Promise<{ order: OrderEntity; items: OrderItemEntity[] }> => {
   validateCreateOrderPayload(payload);
 
-  const userId = await findFirstUserId();
-  if (!userId) {
-    throw new AppError("Create or register a user before creating an order.", 400);
+  if (!Number.isInteger(userId) || userId < 1) {
+    throw new AppError("A valid logged-in user is required to create an order.", 401);
   }
 
   await seedPostmanCatalog();

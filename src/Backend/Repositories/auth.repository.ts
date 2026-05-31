@@ -37,6 +37,21 @@ export const findUserByEmail = async (email: string): Promise<UserEntity | null>
   return user ?? null;
 };
 
+export const findUserById = async (id: number): Promise<UserEntity | null> => {
+  await ensureUsersTable();
+
+  const userRepository = appDataSource.getRepository(UserEntity);
+  const user = await userRepository.findOne({ where: { id } });
+  return user ?? null;
+};
+
+export const findUsers = async (): Promise<UserEntity[]> => {
+  await ensureUsersTable();
+
+  const userRepository = appDataSource.getRepository(UserEntity);
+  return await userRepository.find({ order: { id: "ASC" } });
+};
+
 export interface CreateUserInput {
   email: string;
   fullName: string;

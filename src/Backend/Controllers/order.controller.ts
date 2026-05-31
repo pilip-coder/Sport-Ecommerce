@@ -25,6 +25,8 @@ export class OrderController {
 =======
 import type { Request, Response } from "express";
 
+import { AppError } from "../Core/errors";
+import { AuthenticatedRequest } from "../Core/guards";
 import { asyncHandler } from "../Core/utils";
 import type { CreateOrderDto, OrderFilterDto, UpdateOrderStatusDto } from "../dto/order";
 import {
@@ -41,7 +43,12 @@ const toPositiveNumber = (value: unknown, fallback: number): number => {
 
 export const createOrder = asyncHandler<never, unknown, CreateOrderDto>(
   async (req: Request<never, unknown, CreateOrderDto>, res: Response) => {
-    const result = await createUserOrder(req.body);
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) {
+      throw new AppError("Authorization header is required.", 401);
+    }
+
+    const result = await createUserOrder(authUser.userId, req.body);
     res.status(201).json({
       message: "Order created successfully.",
       order: result.order,

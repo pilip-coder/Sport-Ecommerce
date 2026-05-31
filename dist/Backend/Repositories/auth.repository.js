@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createUser = exports.findUserByEmail = exports.ensureUsersTable = void 0;
+exports.createUser = exports.findUsers = exports.findUserById = exports.findUserByEmail = exports.ensureUsersTable = void 0;
 const database_config_1 = require("../Config/database.config");
 const errors_1 = require("../Core/errors");
 const user_model_1 = require("../Models/user.model");
@@ -35,6 +35,19 @@ const findUserByEmail = async (email) => {
     return user ?? null;
 };
 exports.findUserByEmail = findUserByEmail;
+const findUserById = async (id) => {
+    await (0, exports.ensureUsersTable)();
+    const userRepository = database_config_1.appDataSource.getRepository(user_model_1.UserEntity);
+    const user = await userRepository.findOne({ where: { id } });
+    return user ?? null;
+};
+exports.findUserById = findUserById;
+const findUsers = async () => {
+    await (0, exports.ensureUsersTable)();
+    const userRepository = database_config_1.appDataSource.getRepository(user_model_1.UserEntity);
+    return await userRepository.find({ order: { id: "ASC" } });
+};
+exports.findUsers = findUsers;
 const getNextUserId = async () => {
     const rows = (await database_config_1.appDataSource.query("SELECT COALESCE(MAX(user_id), 0) + 1 AS next_id FROM users"));
     return Number(rows[0]?.next_id ?? 1);

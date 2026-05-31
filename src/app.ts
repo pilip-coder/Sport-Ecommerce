@@ -38,7 +38,7 @@ app.use(express.static(process.cwd()));
 app.use(express.static(path.resolve(process.cwd(), "src")));
 app.use("/uploads", express.static(uploadsPath));
 
-app.get(["/", "/login", "/register"], (_req, res) => {
+app.get(["/", "/login", "/register", "/users", "/profile"], (_req, res) => {
   res.sendFile(indexHtmlPath);
 });
 
