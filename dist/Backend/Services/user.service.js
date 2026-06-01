@@ -2,8 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteUserById = exports.getUsers = exports.getUserById = void 0;
 const errors_1 = require("../Core/errors");
-const user_repository_1 = require("../Repositories/user.repository");
 const auth_repository_1 = require("../Repositories/auth.repository");
+const user_repository_1 = require("../Repositories/user.repository");
 const toUserResponse = (user) => ({
     id: user.id,
     email: user.email,

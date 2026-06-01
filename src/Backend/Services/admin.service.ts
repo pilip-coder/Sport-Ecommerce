@@ -5,6 +5,10 @@ import type {
   AdminUpdateUserStatusDto,
 } from "../dto/admin";
 import {
+  type AdminOrderRecord,
+  type AdminPaymentRecord,
+  type AdminUserRecord,
+  type FinancialSummaryRecord,
   findAdminOrders,
   findAdminPayments,
   findAdminUsers,
@@ -28,7 +32,7 @@ const normalizeSearch = (query: AdminListQueryDto): string | undefined => {
   return search ? search : undefined;
 };
 
-export const listAdminUsers = async (query: AdminListQueryDto) => {
+export const listAdminUsers = async (query: AdminListQueryDto): Promise<AdminUserRecord[]> => {
   return findAdminUsers(normalizeSearch(query));
 };
 
@@ -57,15 +61,15 @@ export const removeAdminUser = async (userIdValue: string): Promise<void> => {
   }
 };
 
-export const listAdminOrders = async (query: AdminListQueryDto) => {
+export const listAdminOrders = async (query: AdminListQueryDto): Promise<AdminOrderRecord[]> => {
   return findAdminOrders(normalizeSearch(query));
 };
 
-export const listAdminPayments = async (query: AdminListQueryDto) => {
+export const listAdminPayments = async (query: AdminListQueryDto): Promise<AdminPaymentRecord[]> => {
   return findAdminPayments(normalizeSearch(query));
 };
 
-export const getAdminFinancialSummary = async () => {
+export const getAdminFinancialSummary = async (): Promise<FinancialSummaryRecord> => {
   return findFinancialSummary();
 };
 

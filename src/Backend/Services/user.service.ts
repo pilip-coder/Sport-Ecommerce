@@ -1,7 +1,7 @@
 import { AppError } from "../Core/errors";
 import type { AuthUserResponse, UserEntity } from "../Models/user.model";
-import { deleteUserById as repoDeleteUserById } from "../Repositories/user.repository";
 import { findUserById, findUsers } from "../Repositories/auth.repository";
+import { deleteUserById as repoDeleteUserById } from "../Repositories/user.repository";
 
 const toUserResponse = (user: UserEntity): AuthUserResponse => ({
   id: user.id,
