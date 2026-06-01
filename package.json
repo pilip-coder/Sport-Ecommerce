@@ -12,12 +12,7 @@
     "mysql2": "^3.22.4",
     "react-router-dom": "^7.15.1",
     "reflect-metadata": "^0.2.2",
-<<<<<<< HEAD
     "typeorm": "^1.0.0"
-=======
-    "typeorm": "^1.0.0",
-    "typescript": "^6.0.3"
->>>>>>> 0c1e507d7c404effbb80ef5370c0532eb022a4b4
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

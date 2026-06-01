@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const guards_1 = require("../Core/guards");
 const user_controller_1 = require("../Controllers/user.controller");
+const guards_1 = require("../Core/guards");
 const userRouter = (0, express_1.Router)();
-// Admin-only
-userRouter.get("/", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin"), user_controller_1.listAllUsers);
+userRouter.get("/", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin"), user_controller_1.listUsers);
+userRouter.get("/me", guards_1.requireAuth, user_controller_1.getCurrentUser);
+userRouter.get("/:id", guards_1.requireAuth, user_controller_1.getUser);
 userRouter.delete("/:id", guards_1.requireAuth, (0, guards_1.requireRoles)("Admin"), user_controller_1.deleteUser);
 exports.default = userRouter;
