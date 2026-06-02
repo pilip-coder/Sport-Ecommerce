@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createUser = exports.findUsers = exports.findUserById = exports.findUserByEmail = exports.ensureUsersTable = void 0;
+exports.revokeAuthSession = exports.isAuthSessionActive = exports.createAuthSession = exports.createUser = exports.findUsers = exports.findUserById = exports.findUserByEmail = exports.ensureUsersTable = void 0;
 const database_config_1 = require("../Config/database.config");
 const errors_1 = require("../Core/errors");
 const user_model_1 = require("../Models/user.model");
 let usersTableReady = false;
 let usersTableInitPromise = null;
+let authSessionsTableReady = false;
+let authSessionsTableInitPromise = null;
 const ensureUsersTable = async () => {
     if (usersTableReady || database_config_1.appDataSource.isInitialized) {
         usersTableReady = true;
@@ -28,6 +30,37 @@ const ensureUsersTable = async () => {
     await usersTableInitPromise;
 };
 exports.ensureUsersTable = ensureUsersTable;
+const ensureAuthSessionsTable = async () => {
+    await (0, exports.ensureUsersTable)();
+    if (authSessionsTableReady) {
+        return;
+    }
+    if (!authSessionsTableInitPromise) {
+        authSessionsTableInitPromise = (async () => {
+            try {
+                await database_config_1.appDataSource.query(`
+          CREATE TABLE IF NOT EXISTS auth_sessions (
+            session_id varchar(64) NOT NULL PRIMARY KEY,
+            user_id int NOT NULL,
+            expires_at timestamp NOT NULL,
+            revoked_at timestamp NULL DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_auth_sessions_user_id (user_id),
+            KEY idx_auth_sessions_expires_at (expires_at)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+                authSessionsTableReady = true;
+            }
+            catch (error) {
+                const message = error?.message ?? String(error);
+                throw new errors_1.AppError(`Database unavailable: ${message}`, 503);
+            }
+        })().finally(() => {
+            authSessionsTableInitPromise = null;
+        });
+    }
+    await authSessionsTableInitPromise;
+};
 const findUserByEmail = async (email) => {
     await (0, exports.ensureUsersTable)();
     const userRepository = database_config_1.appDataSource.getRepository(user_model_1.UserEntity);
@@ -100,3 +133,28 @@ const createUser = async (input) => {
     }
 };
 exports.createUser = createUser;
+const createAuthSession = async (userId, sessionId, expiresAt) => {
+    await ensureAuthSessionsTable();
+    await database_config_1.appDataSource.query("INSERT INTO auth_sessions (session_id, user_id, expires_at, revoked_at, created_at) VALUES (?, ?, ?, NULL, NOW())", [sessionId, userId, expiresAt]);
+};
+exports.createAuthSession = createAuthSession;
+const isAuthSessionActive = async (userId, sessionId) => {
+    await ensureAuthSessionsTable();
+    const rows = (await database_config_1.appDataSource.query(`
+      SELECT 1
+      FROM auth_sessions
+      WHERE session_id = ?
+        AND user_id = ?
+        AND revoked_at IS NULL
+        AND expires_at > NOW()
+      LIMIT 1
+    `, [sessionId, userId]));
+    return rows.length > 0;
+};
+exports.isAuthSessionActive = isAuthSessionActive;
+const revokeAuthSession = async (userId, sessionId) => {
+    await ensureAuthSessionsTable();
+    const result = await database_config_1.appDataSource.query("UPDATE auth_sessions SET revoked_at = NOW() WHERE session_id = ? AND user_id = ? AND revoked_at IS NULL", [sessionId, userId]);
+    return Number(result?.affectedRows ?? 0) > 0;
+};
+exports.revokeAuthSession = revokeAuthSession;

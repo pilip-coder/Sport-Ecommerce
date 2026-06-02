@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loginUser = exports.registerUser = void 0;
+exports.logoutUser = exports.loginUser = exports.registerUser = void 0;
 const node_crypto_1 = require("node:crypto");
 const node_util_1 = require("node:util");
 const environment_1 = require("../Config/environment");
@@ -72,7 +72,8 @@ const parseJwtExpirySeconds = (value) => {
     }
     return amount;
 };
-const createAccessToken = (user) => {
+const createSessionId = () => (0, node_crypto_1.randomBytes)(16).toString("hex");
+const createAccessToken = (user, sessionId) => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const expiresInSeconds = parseJwtExpirySeconds(environment_1.environment.jwtExpiresIn);
     const header = encodeBase64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -80,6 +81,7 @@ const createAccessToken = (user) => {
         sub: user.id,
         email: user.email,
         role: user.roleName,
+        jti: sessionId,
         iat: nowSeconds,
         exp: nowSeconds + expiresInSeconds,
     }));
@@ -93,6 +95,16 @@ const normalizeRoleName = (roleName) => {
 };
 const isPublicRoleName = (roleName) => {
     return roleName === "customer" || roleName === "staff";
+};
+const issueAuthResult = async (user) => {
+    const sessionId = createSessionId();
+    const expiresInSeconds = parseJwtExpirySeconds(environment_1.environment.jwtExpiresIn);
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+    await (0, auth_repository_1.createAuthSession)(user.id, sessionId, expiresAt);
+    return {
+        user: toAuthUserResponse(user),
+        accessToken: createAccessToken(user, sessionId),
+    };
 };
 const registerUser = async (payload) => {
     validateRegisterPayload(payload);
@@ -116,10 +128,7 @@ const registerUser = async (payload) => {
         phone: payload.phone?.trim() || null,
         roleName: requestedRoleName,
     });
-    return {
-        user: toAuthUserResponse(createdUser),
-        accessToken: createAccessToken(createdUser),
-    };
+    return issueAuthResult(createdUser);
 };
 exports.registerUser = registerUser;
 const loginUser = async (payload) => {
@@ -133,9 +142,13 @@ const loginUser = async (payload) => {
     if (!passwordMatches) {
         throw new errors_1.AppError("Invalid email or password.", 401);
     }
-    return {
-        user: toAuthUserResponse(existingUser),
-        accessToken: createAccessToken(existingUser),
-    };
+    return issueAuthResult(existingUser);
 };
 exports.loginUser = loginUser;
+const logoutUser = async (userId, sessionId) => {
+    const revoked = await (0, auth_repository_1.revokeAuthSession)(userId, sessionId);
+    if (!revoked) {
+        throw new errors_1.AppError("Session already logged out or invalid.", 401);
+    }
+};
+exports.logoutUser = logoutUser;
