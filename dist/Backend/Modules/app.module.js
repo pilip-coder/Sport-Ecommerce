@@ -6,6 +6,7 @@ const catalog_module_1 = require("./catalog.module");
 const category_module_1 = require("./category.module");
 const inventory_module_1 = require("./inventory.module");
 const order_module_1 = require("./order.module");
+const payment_module_1 = require("./payment.module");
 const review_module_1 = require("./review.module");
 const user_module_1 = require("./user.module");
 const registerModules = (app) => {
@@ -16,5 +17,6 @@ const registerModules = (app) => {
     (0, inventory_module_1.registerInventoryModule)(app);
     (0, review_module_1.registerReviewModule)(app);
     (0, order_module_1.registerOrderModule)(app);
+    (0, payment_module_1.registerPaymentModule)(app);
 };
 exports.registerModules = registerModules;

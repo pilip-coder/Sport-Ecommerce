@@ -5,6 +5,7 @@ import { registerCatalogModule } from "./catalog.module";
 import { registerCategoryModule } from "./category.module";
 import { registerInventoryModule } from "./inventory.module";
 import { registerOrderModule } from "./order.module";
+import { registerPaymentModule } from "./payment.module";
 import { registerReviewModule } from "./review.module";
 import { registerUserModule } from "./user.module";
 import { registerWishlistModule } from "./wishlist.module";
@@ -17,4 +18,5 @@ export const registerModules = (app: Express): void => {
   registerInventoryModule(app);
   registerReviewModule(app);
   registerOrderModule(app);
+  registerPaymentModule(app);
 };
