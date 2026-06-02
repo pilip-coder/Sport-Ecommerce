@@ -1,14 +1,16 @@
 import { AppError } from "../Core/errors";
 import type { InventoryItemDto } from "../dto/inventory";
+import {
+  createInventoryStock,
+  listInventoryRows,
+  setProductAvailability,
+  updateInventoryStock,
+} from "../Repositories/inventory.repository";
+import { appDataSource } from "../Config/database.config";
 
 interface UpdateInventoryDto {
   productId: number;
   quantity: number;
-}
-
-interface InventoryRepositoryLike {
-  list(): InventoryItemDto[];
-  updateStock(productId: number, quantity: number): InventoryItemDto | null;
 }
 
 const requireNonNegativeInteger = (value: unknown, fieldName: string): number => {
@@ -20,20 +22,34 @@ const requireNonNegativeInteger = (value: unknown, fieldName: string): number =>
 };
 
 export class InventoryService {
-  constructor(private readonly inventoryRepository: InventoryRepositoryLike) {}
-
-  listInventory(): InventoryItemDto[] {
-    return this.inventoryRepository.list();
+  listInventory(): Promise<InventoryItemDto[]> {
+    return listInventoryRows();
   }
 
-  updateInventory(payload: UpdateInventoryDto): InventoryItemDto {
+  async createInventory(payload: UpdateInventoryDto): Promise<InventoryItemDto> {
     const productId = Number(payload.productId);
     const quantity = requireNonNegativeInteger(payload.quantity, "Quantity");
 
-    const product = this.inventoryRepository.updateStock(productId, quantity);
+    const product = await createInventoryStock(productId, quantity);
     if (!product) {
       throw new AppError("Product not found.", 404);
     }
+
+    await setProductAvailability(appDataSource, productId, quantity > 0);
+
+    return product;
+  }
+
+  async updateInventory(payload: UpdateInventoryDto): Promise<InventoryItemDto> {
+    const productId = Number(payload.productId);
+    const quantity = requireNonNegativeInteger(payload.quantity, "Quantity");
+
+    const product = await updateInventoryStock(productId, quantity);
+    if (!product) {
+      throw new AppError("Product not found.", 404);
+    }
+
+    await setProductAvailability(appDataSource, productId, quantity > 0);
 
     return product;
   }

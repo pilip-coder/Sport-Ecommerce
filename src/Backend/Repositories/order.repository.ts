@@ -1,10 +1,17 @@
 import { appDataSource } from "../Config/database.config";
+import { environment } from "../Config/environment";
 import { AppError } from "../Core/errors";
 import type { OrderItemEntity } from "../Models/order-item.model";
 import type { OrderEntity } from "../Models/order.model";
+import { reserveVariantStock } from "./inventory.repository";
 
 let ordersTableReady = false;
 let ordersTableInitPromise: Promise<void> | null = null;
+
+interface StockBootstrapSchema {
+  tableName: string;
+  variantIdColumn: string;
+}
 
 export const ensureOrdersTable = async (): Promise<void> => {
   if (ordersTableReady || appDataSource.isInitialized) {
@@ -52,6 +59,7 @@ export const seedPostmanCatalog = async (): Promise<void> => {
       `INSERT INTO products (product_id, category_id, product_name, description, base_price, image_url, status)
        VALUES (1, NULL, 'Postman Training Shirt', 'Sample product for API testing', 19.99, NULL, 'available')`,
     );
+    existingProductIds.add(1);
   }
 
   if (!existingProductIds.has(2)) {
@@ -59,26 +67,131 @@ export const seedPostmanCatalog = async (): Promise<void> => {
       `INSERT INTO products (product_id, category_id, product_name, description, base_price, image_url, status)
        VALUES (2, NULL, 'Postman Running Shoes', 'Sample product for API testing', 49.99, NULL, 'available')`,
     );
+    existingProductIds.add(2);
   }
 
-  const variantRows = (await appDataSource.query(
-    "SELECT variant_id FROM product_variants WHERE variant_id IN (1, 2)",
+  const product1VariantRows = (await appDataSource.query(
+    "SELECT variant_id FROM product_variants WHERE product_id = 1 ORDER BY variant_id ASC LIMIT 1",
   )) as Array<{ variant_id: number }>;
-  const existingVariantIds = new Set(variantRows.map((row) => Number(row.variant_id)));
+  const product2VariantRows = (await appDataSource.query(
+    "SELECT variant_id FROM product_variants WHERE product_id = 2 ORDER BY variant_id ASC LIMIT 1",
+  )) as Array<{ variant_id: number }>;
+  let nextVariantId = Number(
+    (
+      (await appDataSource.query(
+        "SELECT COALESCE(MAX(variant_id), 0) + 1 AS next_id FROM product_variants",
+      )) as Array<{ next_id: number }>
+    )[0]?.next_id ?? 1,
+  );
 
-  if (!existingVariantIds.has(1)) {
+  if (existingProductIds.has(1) && product1VariantRows.length === 0) {
     await appDataSource.query(
       `INSERT INTO product_variants (variant_id, product_id, size, color, sku, extra_price)
-       VALUES (1, 1, 'M', 'Black', 'POSTMAN-SHIRT-M-BLK', 0.00)`,
+       VALUES (?, 1, 'M', 'Black', 'POSTMAN-SHIRT-M-BLK', 0.00)`,
+      [nextVariantId],
+    );
+    nextVariantId += 1;
+  }
+
+  if (existingProductIds.has(2) && product2VariantRows.length === 0) {
+    await appDataSource.query(
+      `INSERT INTO product_variants (variant_id, product_id, size, color, sku, extra_price)
+       VALUES (?, 2, '42', 'White', 'POSTMAN-SHOE-42-WHT', 10.00)`,
+      [nextVariantId],
     );
   }
 
-  if (!existingVariantIds.has(2)) {
-    await appDataSource.query(
-      `INSERT INTO product_variants (variant_id, product_id, size, color, sku, extra_price)
-       VALUES (2, 2, '42', 'White', 'POSTMAN-SHOE-42-WHT', 10.00)`,
-    );
+  await appDataSource.query(`
+    CREATE TABLE IF NOT EXISTS stock (
+      id int NOT NULL AUTO_INCREMENT,
+      product_variant_id int NOT NULL,
+      quantity int NOT NULL DEFAULT 0,
+      reserved_quantity int NOT NULL DEFAULT 0,
+      warehouse_location varchar(255) DEFAULT NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_stock_product_variant_id (product_variant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  const stockSchema = await resolveStockBootstrapSchema();
+  if (!stockSchema) {
+    return;
   }
+
+  const demoVariants = (await appDataSource.query(
+    "SELECT variant_id FROM product_variants WHERE product_id IN (1, 2) ORDER BY variant_id ASC",
+  )) as Array<{ variant_id: number }>;
+  const demoVariantIds = demoVariants.map((row) => Number(row.variant_id));
+
+  if (demoVariantIds.length > 0) {
+    const placeholders = demoVariantIds.map(() => "?").join(", ");
+    const existingStockRows = (await appDataSource.query(
+      `SELECT ${stockSchema.variantIdColumn} FROM ${stockSchema.tableName} WHERE ${stockSchema.variantIdColumn} IN (${placeholders})`,
+      demoVariantIds,
+    )) as Array<Record<string, unknown>>;
+    const existingStockIds = new Set(
+      existingStockRows.map((row) => Number(row[stockSchema.variantIdColumn])),
+    );
+
+    for (const variantId of demoVariantIds) {
+      if (existingStockIds.has(variantId)) {
+        continue;
+      }
+
+      await appDataSource.query(
+        `INSERT INTO ${stockSchema.tableName} (${stockSchema.variantIdColumn}, quantity, reserved_quantity, warehouse_location, created_at, updated_at)
+         VALUES (?, 1, 0, NULL, NOW(), NOW())`,
+        [variantId],
+      );
+    }
+  }
+};
+
+const resolveStockBootstrapSchema = async (): Promise<StockBootstrapSchema | null> => {
+  const rows = (await appDataSource.query(
+    `
+      SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME IN ('stock', 'stocks')
+    `,
+    [environment.databaseName],
+  )) as Array<{ table_name: string; column_name: string }>;
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const columnsByTable = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!columnsByTable.has(row.table_name)) {
+      columnsByTable.set(row.table_name, new Set<string>());
+    }
+    columnsByTable.get(row.table_name)?.add(row.column_name);
+  }
+
+  const tableName = columnsByTable.has("stock") ? "stock" : "stocks";
+  const columns = columnsByTable.get(tableName);
+  if (!columns) {
+    return null;
+  }
+
+  const variantIdColumn = columns.has("variant_id")
+    ? "variant_id"
+    : columns.has("product_variant_id")
+      ? "product_variant_id"
+      : null;
+
+  if (!variantIdColumn) {
+    return null;
+  }
+
+  return {
+    tableName,
+    variantIdColumn,
+  };
 };
 
 export const createOrder = async (
@@ -92,6 +205,14 @@ export const createOrder = async (
   await queryRunner.startTransaction();
 
   try {
+    for (const item of items) {
+      if (item.productVariantId == null) {
+        throw new AppError("Product variant is required for order items.", 400);
+      }
+
+      await reserveVariantStock(queryRunner, item.productId, item.productVariantId, item.quantity);
+    }
+
     const insertResult = (await queryRunner.query(
       `INSERT INTO orders (user_id, address_id, total_amount, order_status, created_at)
        VALUES (?, ?, ?, ?, NOW())`,
