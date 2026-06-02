@@ -5,4 +5,7 @@
   - [x] Mounted users module in app.module.ts
   - [ ] Verify endpoints: GET /api/users and DELETE /api/users/:id
 
+- [x] Add cart system for users
+- [x] Add wishlist / favorites for users
+- [x] Add backend checkout flow from cart
 
