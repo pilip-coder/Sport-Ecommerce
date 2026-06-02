@@ -301,6 +301,24 @@ const buildEnabledFilterSql = (
   return `${scopedColumn} = 1`;
 };
 
+const buildProductAvailabilityFilterSql = (
+  tableAlias: string,
+  activeColumn: string | null,
+  activeIsText: boolean,
+  statusColumn: string | null,
+): string => {
+  if (activeColumn) {
+    return buildEnabledFilterSql(tableAlias, activeColumn, activeIsText);
+  }
+
+  if (!statusColumn) {
+    return "1 = 1";
+  }
+
+  const scopedColumn = tableAlias ? `${tableAlias}.${quoteIdentifier(statusColumn)}` : quoteIdentifier(statusColumn);
+  return `LOWER(COALESCE(${scopedColumn}, '')) NOT IN ('inactive', 'out_of_stock', 'disabled', 'draft', 'archived', 'rejected')`;
+};
+
 const getActiveWriteValue = (enabled: boolean, isText: boolean): string | number => {
   if (isText) {
     return enabled ? "active" : "inactive";
@@ -639,10 +657,11 @@ export const listProductsFromRepository = async (
   const variantProductIdSql = quoteIdentifier(schema.variantProductIdColumn);
   const variantPriceSql = quoteIdentifier(schema.variantPriceColumn);
   const reviewProductIdSql = quoteIdentifier(schema.reviewProductIdColumn);
-  const productActiveFilterSql = buildEnabledFilterSql(
+  const productActiveFilterSql = buildProductAvailabilityFilterSql(
     "p",
     schema.productActiveColumn,
     schema.productActiveIsText,
+    schema.productStatusColumn,
   );
   const variantActiveFilterSql = buildEnabledFilterSql(
     "pv",
@@ -762,10 +781,11 @@ export const getProductDetailFromRepository = async (
   const reviewUserIdSql = quoteIdentifier(schema.reviewUserIdColumn);
   const reviewTitleSql = schema.reviewTitleColumn ? quoteIdentifier(schema.reviewTitleColumn) : null;
   const reviewCommentSql = quoteIdentifier(schema.reviewCommentColumn);
-  const productActiveFilterSql = buildEnabledFilterSql(
+  const productActiveFilterSql = buildProductAvailabilityFilterSql(
     "p",
     schema.productActiveColumn,
     schema.productActiveIsText,
+    schema.productStatusColumn,
   );
   const variantActiveFilterSql = buildEnabledFilterSql(
     "",
@@ -897,6 +917,13 @@ interface ProductAdminRow extends RowDataPacket {
   is_active: number | boolean;
 }
 
+interface ProductOrderableRow extends RowDataPacket {
+  id: number;
+  name: string;
+  slug: string | null;
+  base_price: number | string;
+}
+
 export interface CreateProductRepositoryInput {
   name: string;
   slug: string;
@@ -1025,6 +1052,65 @@ const createDefaultVariantAndStock = async (
     `,
     stockValues,
   );
+};
+
+export const ensureProductHasDefaultVariantAndStock = async (
+  productId: number,
+  quantity: number,
+): Promise<boolean> => {
+  await ensureCatalogDatabase();
+  const schema = await resolveCatalogSchema();
+
+  const productIdSql = quoteIdentifier(schema.productIdColumn);
+  const productNameSql = quoteIdentifier(schema.productNameColumn);
+  const productSlugSql = schema.productSlugColumn ? quoteIdentifier(schema.productSlugColumn) : null;
+
+  const productRows = (await appDataSource.query(
+    `
+      SELECT
+        ${productIdSql} AS id,
+        ${productNameSql} AS name,
+        ${productSlugSql ? `p.${productSlugSql}` : "NULL"} AS slug,
+        base_price
+      FROM products p
+      WHERE ${productIdSql} = ?
+      LIMIT 1
+    `,
+    [productId],
+  )) as ProductOrderableRow[];
+
+  const product = productRows[0];
+  if (!product) {
+    throw new AppError("Product not found.", 404);
+  }
+
+  const variantRows = (await appDataSource.query(
+    `SELECT ${quoteIdentifier(schema.variantIdColumn)} AS variant_id FROM product_variants WHERE ${quoteIdentifier(schema.variantProductIdColumn)} = ? LIMIT 1`,
+    [productId],
+  )) as Array<{ variant_id: number }>;
+
+  if (variantRows.length > 0) {
+    return false;
+  }
+
+  const fallbackSlug = product.slug?.trim() || slugify(product.name);
+  await createDefaultVariantAndStock(
+    productId,
+    {
+      name: product.name,
+      slug: fallbackSlug,
+      description: null,
+      basePrice: Number(product.base_price),
+      categoryId: null,
+      imageUrl: null,
+      initialQuantity: quantity,
+      variantSku: `${fallbackSlug}-${productId}`,
+      variantName: "Default",
+    },
+    schema,
+  );
+
+  return true;
 };
 
 const findProductById = async (productId: number): Promise<ProductAdminRow | null> => {

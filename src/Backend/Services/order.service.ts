@@ -3,6 +3,7 @@ import { AppError } from "../Core/errors";
 import type { CreateOrderDto, OrderFilterDto, UpdateOrderStatusDto } from "../dto/order";
 import type { OrderEntity } from "../Models/order.model";
 import type { OrderItemEntity } from "../Models/order-item.model";
+import { ensureProductHasDefaultVariantAndStock } from "../Repositories/catalog.repository";
 import {
   createOrder,
   findAllOrders,
@@ -75,7 +76,20 @@ export const createUserOrder = async (userId: number, payload: CreateOrderDto): 
     )) as Array<{ variant_id: number; sku: string | null; extra_price: number | null }>;
 
     if (variantRows.length === 0) {
-      throw new AppError(`Product ${dtoItem.productId} has no matching variant.`, 404);
+      await ensureProductHasDefaultVariantAndStock(dtoItem.productId, dtoItem.quantity);
+
+      const recoveredVariantRows = (await appDataSource.query(
+        productVariantId
+          ? "SELECT variant_id, sku, extra_price FROM product_variants WHERE variant_id = ? AND product_id = ? LIMIT 1"
+          : "SELECT variant_id, sku, extra_price FROM product_variants WHERE product_id = ? ORDER BY variant_id ASC LIMIT 1",
+        productVariantId ? [productVariantId, dtoItem.productId] : [dtoItem.productId],
+      )) as Array<{ variant_id: number; sku: string | null; extra_price: number | null }>;
+
+      if (recoveredVariantRows.length === 0) {
+        throw new AppError(`Product ${dtoItem.productId} has no matching variant.`, 404);
+      }
+
+      variantRows.push(recoveredVariantRows[0]);
     }
 
     productVariantId = Number(variantRows[0].variant_id);
