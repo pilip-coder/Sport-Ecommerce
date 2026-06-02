@@ -4,11 +4,13 @@ import { NextFunction, Request, Response } from "express";
 
 import { environment } from "../../Config/environment";
 import { AppError } from "../errors";
+import { isAuthSessionActive } from "../../Repositories/auth.repository";
 
 interface JwtPayload {
   sub: number | string;
   email: string;
   role: string;
+  jti: string;
   iat: number;
   exp: number;
 }
@@ -18,6 +20,7 @@ export interface AuthenticatedRequest extends Request {
     userId: number;
     email: string;
     role: string;
+    sessionId: string;
   };
 }
 
@@ -65,7 +68,7 @@ const verifyToken = (token: string): JwtPayload => {
     throw new AppError("Invalid access token payload.", 401);
   }
 
-  if (!parsed.sub || !parsed.email || !parsed.role || !parsed.exp) {
+  if (!parsed.sub || !parsed.email || !parsed.role || !parsed.jti || !parsed.exp) {
     throw new AppError("Access token is missing required claims.", 401);
   }
 
@@ -79,18 +82,29 @@ const verifyToken = (token: string): JwtPayload => {
     throw new AppError("Invalid access token subject.", 401);
   }
 
+  if (typeof parsed.jti !== "string" || parsed.jti.trim().length < 8) {
+    throw new AppError("Invalid access token session.", 401);
+  }
+
   return parsed;
 };
 
-export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+export const requireAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const token = parseBearerToken(req.headers.authorization);
     const payload = verifyToken(token);
+    const userId = Number(payload.sub);
+    const sessionActive = await isAuthSessionActive(userId, payload.jti);
+
+    if (!sessionActive) {
+      throw new AppError("Session has been revoked. Please login again.", 401);
+    }
 
     (req as AuthenticatedRequest).authUser = {
-      userId: Number(payload.sub),
+      userId,
       email: payload.email,
       role: payload.role,
+      sessionId: payload.jti,
     };
     next();
   } catch (error) {
