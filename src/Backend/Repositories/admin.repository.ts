@@ -2,6 +2,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 import { appDataSource } from "../Config/database.config";
 import { AppError } from "../Core/errors";
+import { ensurePaymentsTable } from "./payment.repository";
 
 export interface AdminUserRecord extends RowDataPacket {
   id: number;
@@ -30,6 +31,7 @@ export interface AdminOrderRecord extends RowDataPacket {
 export interface AdminPaymentRecord extends RowDataPacket {
   id: number;
   orderId: number;
+  userId: number;
   provider: string;
   method: string;
   status: string;
@@ -150,12 +152,13 @@ export const findAdminOrders = async (search?: string): Promise<AdminOrderRecord
 
 export const findAdminPayments = async (search?: string): Promise<AdminPaymentRecord[]> => {
   await ensureDatabase();
+  await ensurePaymentsTable();
 
   const where: string[] = [];
   const params: unknown[] = [];
 
   if (search?.trim()) {
-    where.push("(CAST(payment_id AS CHAR) LIKE ? OR CAST(order_id AS CHAR) LIKE ? OR transaction_id LIKE ?)");
+    where.push("(CAST(p.payment_id AS CHAR) LIKE ? OR CAST(p.order_id AS CHAR) LIKE ? OR p.transaction_id LIKE ?)");
     const pattern = `%${search.trim()}%`;
     params.push(pattern, pattern, pattern);
   }
@@ -163,19 +166,21 @@ export const findAdminPayments = async (search?: string): Promise<AdminPaymentRe
   return appDataSource.query(
     `
       SELECT
-        payment_id AS id,
-        order_id AS orderId,
-        provider,
-        method,
-        status,
-        amount,
-        currency,
-        transaction_id AS transactionId,
-        paid_at AS paidAt,
-        created_at AS createdAt
-      FROM payments
+        p.payment_id AS id,
+        p.order_id AS orderId,
+        o.user_id AS userId,
+        p.provider,
+        p.method,
+        p.status,
+        p.amount,
+        p.currency,
+        p.transaction_id AS transactionId,
+        p.paid_at AS paidAt,
+        p.created_at AS createdAt
+      FROM payments p
+      LEFT JOIN orders o ON o.order_id = p.order_id
       ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
-      ORDER BY created_at DESC
+      ORDER BY p.created_at DESC
     `,
     params,
   ) as Promise<AdminPaymentRecord[]>;
@@ -183,6 +188,7 @@ export const findAdminPayments = async (search?: string): Promise<AdminPaymentRe
 
 export const findFinancialSummary = async (): Promise<FinancialSummaryRecord> => {
   await ensureDatabase();
+  await ensurePaymentsTable();
 
   const rows = (await appDataSource.query(`
     SELECT
@@ -205,6 +211,7 @@ export const updateAdminPaymentStatus = async (
   status: string,
 ): Promise<boolean> => {
   await ensureDatabase();
+  await ensurePaymentsTable();
 
   const result = (await appDataSource.query(
     `

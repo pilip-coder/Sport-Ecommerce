@@ -7,6 +7,8 @@ import type { PaymentEntity } from "../Models/payment.model";
 
 let paymentsDbReady = false;
 let paymentsDbInitPromise: Promise<void> | null = null;
+let paymentsTableReady = false;
+let paymentsTableInitPromise: Promise<void> | null = null;
 let orderPaymentStatusColumnPromise: Promise<boolean> | null = null;
 
 export interface OrderPaymentContext {
@@ -61,27 +63,73 @@ const ensurePaymentsDatabase = async (): Promise<void> => {
   }
 };
 
-const ensurePaymentsTable = async (): Promise<void> => {
-  await ensurePaymentsDatabase();
+export const ensurePaymentsTable = async (): Promise<void> => {
+  if (paymentsTableReady && appDataSource.isInitialized) {
+    return;
+  }
 
-  await appDataSource.query(`
-    CREATE TABLE IF NOT EXISTS payments (
-      payment_id INT NOT NULL AUTO_INCREMENT,
-      order_id INT NOT NULL,
-      provider VARCHAR(50) NOT NULL DEFAULT 'manual',
-      method VARCHAR(50) NOT NULL DEFAULT 'cash',
-      status VARCHAR(20) NOT NULL DEFAULT 'pending',
-      amount DECIMAL(10, 2) NOT NULL,
-      currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-      transaction_id VARCHAR(100) DEFAULT NULL,
-      paid_at TIMESTAMP NULL DEFAULT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (payment_id),
-      KEY idx_payments_order_id (order_id),
-      KEY idx_payments_status (status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
+  if (!paymentsTableInitPromise) {
+    paymentsTableInitPromise = (async () => {
+      await ensurePaymentsDatabase();
+
+      await appDataSource.query(`
+        CREATE TABLE IF NOT EXISTS payments (
+          payment_id INT NOT NULL AUTO_INCREMENT,
+          order_id INT NOT NULL,
+          provider VARCHAR(50) NOT NULL DEFAULT 'manual',
+          method VARCHAR(50) NOT NULL DEFAULT 'cash',
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          amount DECIMAL(10, 2) NOT NULL,
+          currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+          transaction_id VARCHAR(100) DEFAULT NULL,
+          paid_at TIMESTAMP NULL DEFAULT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (payment_id),
+          KEY idx_payments_order_id (order_id),
+          KEY idx_payments_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+
+      const existingColumns = (await appDataSource.query(
+        `
+          SELECT COLUMN_NAME AS column_name
+          FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = ?
+            AND TABLE_NAME = 'payments'
+        `,
+        [environment.databaseName],
+      )) as Array<{ column_name: string }>;
+
+      const columns = new Set(existingColumns.map((row) => row.column_name));
+      const addColumnIfMissing = async (columnName: string, definition: string): Promise<void> => {
+        if (columns.has(columnName)) {
+          return;
+        }
+
+        await appDataSource.query(`ALTER TABLE payments ADD COLUMN ${definition}`);
+        columns.add(columnName);
+      };
+
+      await addColumnIfMissing("provider", "provider VARCHAR(50) NOT NULL DEFAULT 'manual'");
+      await addColumnIfMissing("method", "method VARCHAR(50) NOT NULL DEFAULT 'cash'");
+      await addColumnIfMissing("status", "status VARCHAR(20) NOT NULL DEFAULT 'pending'");
+      await addColumnIfMissing("currency", "currency VARCHAR(3) NOT NULL DEFAULT 'USD'");
+      await addColumnIfMissing("transaction_id", "transaction_id VARCHAR(100) DEFAULT NULL");
+      await addColumnIfMissing("paid_at", "paid_at TIMESTAMP NULL DEFAULT NULL");
+      await addColumnIfMissing("created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
+      await addColumnIfMissing(
+        "updated_at",
+        "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+      );
+
+      paymentsTableReady = true;
+    })().finally(() => {
+      paymentsTableInitPromise = null;
+    });
+  }
+
+  await paymentsTableInitPromise;
 };
 
 const orderHasPaymentStatusColumn = async (): Promise<boolean> => {
@@ -124,6 +172,7 @@ const syncOrderPaymentStatus = async (orderId: number, status: string): Promise<
 const mapPayment = (row: Record<string, unknown>): PaymentEntity => ({
   id: Number(row.payment_id),
   orderId: Number(row.order_id),
+  userId: Number(row.user_id ?? row.userId ?? 0),
   provider: String(row.provider),
   method: String(row.method),
   status: String(row.status),
@@ -200,7 +249,15 @@ export const findPaymentById = async (paymentId: number): Promise<PaymentEntity 
   await ensurePaymentsTable();
 
   const rows = (await appDataSource.query(
-    "SELECT * FROM payments WHERE payment_id = ? LIMIT 1",
+    `
+      SELECT
+        p.*,
+        o.user_id AS user_id
+      FROM payments p
+      LEFT JOIN orders o ON o.order_id = p.order_id
+      WHERE p.payment_id = ?
+      LIMIT 1
+    `,
     [paymentId],
   )) as Array<Record<string, unknown>>;
 
@@ -230,7 +287,9 @@ export const listPaymentsFromRepository = async (filter: PaymentFilter): Promise
 
   const rows = (await appDataSource.query(
     `
-      SELECT p.*
+      SELECT
+        p.*,
+        o.user_id AS user_id
       FROM payments p
       LEFT JOIN orders o ON o.order_id = p.order_id
       ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
