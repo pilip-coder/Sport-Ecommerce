@@ -8,7 +8,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const environment_1 = require("./Backend/Config/environment");
 const errors_1 = require("./Backend/Core/errors");
 const middleware_1 = require("./Backend/Core/middleware");
-const auth_module_1 = require("./Backend/Modules/auth.module");
+const app_module_1 = require("./Backend/Modules/app.module");
 const app = (0, express_1.default)();
 app.disable("x-powered-by");
 app.use(express_1.default.json());
@@ -27,10 +27,12 @@ app.use(middleware_1.requestLogger);
 // Serve a dev-friendly frontend entry.
 // Note: keep this CommonJS-safe (no import.meta usage).
 const indexHtmlPath = node_path_1.default.resolve(process.cwd(), "index.html");
+const uploadsPath = node_path_1.default.resolve(process.cwd(), "uploads");
 // Static file serving so the browser can load frontend assets.
 app.use(express_1.default.static(process.cwd()));
 app.use(express_1.default.static(node_path_1.default.resolve(process.cwd(), "src")));
-app.get(["/", "/login", "/register"], (_req, res) => {
+app.use("/uploads", express_1.default.static(uploadsPath));
+app.get(["/", "/login", "/register", "/users", "/profile"], (_req, res) => {
     res.sendFile(indexHtmlPath);
 });
 app.get("/health", (_req, res) => {
@@ -47,7 +49,7 @@ app.get("/api", (_req, res) => {
         version: "1.0.0",
     });
 });
-(0, auth_module_1.registerAuthModule)(app);
+(0, app_module_1.registerModules)(app);
 app.use(errors_1.notFoundHandler);
 app.use(errors_1.errorHandler);
 exports.default = app;

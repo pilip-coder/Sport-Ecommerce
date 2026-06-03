@@ -7,7 +7,7 @@ import { environment } from "./Backend/Config/environment";
 
 import { errorHandler, notFoundHandler } from "./Backend/Core/errors";
 import { requestLogger } from "./Backend/Core/middleware";
-import { registerAuthModule } from "./Backend/Modules/auth.module";
+import { registerModules } from "./Backend/Modules/app.module";
 
 const app: Express = express();
 
@@ -31,12 +31,14 @@ app.use(requestLogger);
 // Serve a dev-friendly frontend entry.
 // Note: keep this CommonJS-safe (no import.meta usage).
 const indexHtmlPath = path.resolve(process.cwd(), "index.html");
+const uploadsPath = path.resolve(process.cwd(), "uploads");
 
 // Static file serving so the browser can load frontend assets.
 app.use(express.static(process.cwd()));
 app.use(express.static(path.resolve(process.cwd(), "src")));
+app.use("/uploads", express.static(uploadsPath));
 
-app.get(["/", "/login", "/register"], (_req, res) => {
+app.get(["/", "/login", "/register", "/users", "/profile"], (_req, res) => {
   res.sendFile(indexHtmlPath);
 });
 
@@ -59,7 +61,7 @@ app.get("/api", (_req, res) => {
   });
 });
 
-registerAuthModule(app);
+registerModules(app);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -1,29 +1,29 @@
 import type { RowDataPacket } from "mysql2/promise";
 
 export interface OrderRow extends RowDataPacket {
-  id: number;
+  order_id: number;
   user_id: number;
   address_id: number | null;
-  status: string;
+  full_name?: string;
+  phone?: string | null;
+  street?: string | null;
+  city?: string | null;
+  province?: string | null;
+  order_status: string;
   total_amount: number;
-  shipping_fee: number;
-  discount_amount: number;
-  payment_status: string;
-  placed_at: Date | null;
   created_at: Date;
-  updated_at: Date;
 }
 
 export interface OrderEntity {
   id: number;
   userId: number;
   addressId: number | null;
+  customerName: string;
+  address: string;
+  phone: string;
   status: string;
   totalAmount: number;
-  shippingFee: number;
-  discountAmount: number;
-  paymentStatus: string;
-  placedAt: Date | null;
+  orderDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

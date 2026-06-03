@@ -1,5 +1,7 @@
 import type { Express } from "express";
 
-export const registerPaymentModule = (_app: Express): void => {
-  // Reserved for payment routes.
+import paymentRouter from "../Routes/payment.route";
+
+export const registerPaymentModule = (app: Express): void => {
+  app.use("/api/payments", paymentRouter);
 };

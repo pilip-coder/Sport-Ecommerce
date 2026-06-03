@@ -1,23 +1,55 @@
 import { AppError } from "../Core/errors";
-import { UpdateInventoryDto } from "../dto/inventory";
-import { InventoryRepository } from "../Repositories/inventory.repository";
-import { requireNonNegativeInteger } from "../Core/utils";
+import type { InventoryItemDto } from "../dto/inventory";
+import {
+  createInventoryStock,
+  listInventoryRows,
+  setProductAvailability,
+  updateInventoryStock,
+} from "../Repositories/inventory.repository";
+import { appDataSource } from "../Config/database.config";
+
+interface UpdateInventoryDto {
+  productId: number;
+  quantity: number;
+}
+
+const requireNonNegativeInteger = (value: unknown, fieldName: string): number => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new AppError(`${fieldName} must be a non-negative integer.`, 400);
+  }
+  return parsed;
+};
 
 export class InventoryService {
-  constructor(private readonly inventoryRepository: InventoryRepository) {}
-
-  listInventory() {
-    return this.inventoryRepository.list();
+  listInventory(): Promise<InventoryItemDto[]> {
+    return listInventoryRows();
   }
 
-  updateInventory(payload: UpdateInventoryDto) {
+  async createInventory(payload: UpdateInventoryDto): Promise<InventoryItemDto> {
     const productId = Number(payload.productId);
     const quantity = requireNonNegativeInteger(payload.quantity, "Quantity");
 
-    const product = this.inventoryRepository.updateStock(productId, quantity);
+    const product = await createInventoryStock(productId, quantity);
     if (!product) {
       throw new AppError("Product not found.", 404);
     }
+
+    await setProductAvailability(appDataSource, productId, quantity > 0);
+
+    return product;
+  }
+
+  async updateInventory(payload: UpdateInventoryDto): Promise<InventoryItemDto> {
+    const productId = Number(payload.productId);
+    const quantity = requireNonNegativeInteger(payload.quantity, "Quantity");
+
+    const product = await updateInventoryStock(productId, quantity);
+    if (!product) {
+      throw new AppError("Product not found.", 404);
+    }
+
+    await setProductAvailability(appDataSource, productId, quantity > 0);
 
     return product;
   }

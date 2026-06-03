@@ -3,6 +3,7 @@ import type { RowDataPacket } from "mysql2/promise";
 export interface PaymentRow extends RowDataPacket {
   id: number;
   order_id: number;
+  user_id: number;
   provider: string;
   method: string;
   status: string;
@@ -17,6 +18,7 @@ export interface PaymentRow extends RowDataPacket {
 export interface PaymentEntity {
   id: number;
   orderId: number;
+  userId: number;
   provider: string;
   method: string;
   status: string;

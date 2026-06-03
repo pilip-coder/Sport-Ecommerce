@@ -1,8 +1,7 @@
 export * from "./address.model";
 export * from "./audit-log.model";
-export * from "./cart-item.model";
-export * from "./cart.model";
 export * from "./category.model";
+export * from "./cart.model";
 export * from "./order-item.model";
 export * from "./order.model";
 export * from "./payment.model";
@@ -12,3 +11,4 @@ export * from "./review.model";
 export * from "./role.model";
 export * from "./stock.model";
 export * from "./user.model";
+export * from "./wishlist.model";

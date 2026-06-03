@@ -7,7 +7,12 @@ import { environment } from "../Config/environment";
 import { AppError } from "../Core/errors";
 import type { LoginDto, RegisterDto } from "../dto/auth";
 import type { AuthUserResponse, UserEntity } from "../Models/user.model";
-import { createUser, findUserByEmail } from "../Repositories/auth.repository";
+import {
+  createAuthSession,
+  createUser,
+  findUserByEmail,
+  revokeAuthSession,
+} from "../Repositories/auth.repository";
 
 const scrypt = promisify(scryptCallback);
 
@@ -96,20 +101,23 @@ const parseJwtExpirySeconds = (value: string): number => {
   return amount;
 };
 
-const createAccessToken = (user: UserEntity): string => {
+const createSessionId = (): string => randomBytes(16).toString("hex");
+
+const createAccessToken = (user: UserEntity, sessionId: string): string => {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const expiresInSeconds = parseJwtExpirySeconds(environment.jwtExpiresIn);
 
   const header = encodeBase64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = encodeBase64Url(
     JSON.stringify({
-      sub: user.id,
-      email: user.email,
-      role: user.roleName,
-      iat: nowSeconds,
-      exp: nowSeconds + expiresInSeconds,
-    }),
-  );
+        sub: user.id,
+        email: user.email,
+        role: user.roleName,
+        jti: sessionId,
+        iat: nowSeconds,
+        exp: nowSeconds + expiresInSeconds,
+      }),
+    );
 
   const signature = createHmac("sha256", environment.jwtSecret)
     .update(`${header}.${payload}`)
@@ -118,15 +126,46 @@ const createAccessToken = (user: UserEntity): string => {
   return `${header}.${payload}.${signature}`;
 };
 
+const normalizeRoleName = (roleName: string | undefined): string => {
+  return roleName?.trim().toLowerCase() ?? "customer";
+};
+
+const isPublicRoleName = (roleName: string): boolean => {
+  return roleName === "customer" || roleName === "staff";
+};
+
 export interface AuthResult {
   user: AuthUserResponse;
   accessToken: string;
 }
 
+const issueAuthResult = async (user: UserEntity): Promise<AuthResult> => {
+  const sessionId = createSessionId();
+  const expiresInSeconds = parseJwtExpirySeconds(environment.jwtExpiresIn);
+  const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+
+  await createAuthSession(user.id, sessionId, expiresAt);
+
+  return {
+    user: toAuthUserResponse(user),
+    accessToken: createAccessToken(user, sessionId),
+  };
+};
+
 export const registerUser = async (payload: RegisterDto): Promise<AuthResult> => {
   validateRegisterPayload(payload);
 
+  const requestedRoleName = normalizeRoleName(payload.roleName);
+  if (!isPublicRoleName(requestedRoleName)) {
+    if (requestedRoleName === "admin") {
+      throw new AppError("Public registration cannot create admin accounts.", 403);
+    }
+
+    throw new AppError("Public registration only allows customer or staff accounts.", 400);
+  }
+
   const email = normalizeEmail(payload.email);
+
   const existingUser = await findUserByEmail(email);
 
   if (existingUser) {
@@ -140,13 +179,10 @@ export const registerUser = async (payload: RegisterDto): Promise<AuthResult> =>
     fullName: payload.fullName.trim(),
     passwordHash,
     phone: payload.phone?.trim() || null,
-    roleName: payload.roleName?.trim() || "customer",
+    roleName: requestedRoleName,
   });
 
-  return {
-    user: toAuthUserResponse(createdUser),
-    accessToken: createAccessToken(createdUser),
-  };
+  return issueAuthResult(createdUser);
 };
 
 export const loginUser = async (payload: LoginDto): Promise<AuthResult> => {
@@ -165,8 +201,12 @@ export const loginUser = async (payload: LoginDto): Promise<AuthResult> => {
     throw new AppError("Invalid email or password.", 401);
   }
 
-  return {
-    user: toAuthUserResponse(existingUser),
-    accessToken: createAccessToken(existingUser),
-  };
+  return issueAuthResult(existingUser);
+};
+
+export const logoutUser = async (userId: number, sessionId: string): Promise<void> => {
+  const revoked = await revokeAuthSession(userId, sessionId);
+  if (!revoked) {
+    throw new AppError("Session already logged out or invalid.", 401);
+  }
 };
