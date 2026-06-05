@@ -4,7 +4,7 @@
   "description": "Node.js TypeScript Backend",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/server.ts",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node -P tsconfig.server.json\" src/server.ts",
     "build": "tsc -p tsconfig.server.json",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server.js"
