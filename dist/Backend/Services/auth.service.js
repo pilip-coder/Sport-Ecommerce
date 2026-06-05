@@ -109,10 +109,7 @@ const issueAuthResult = async (user) => {
 const registerUser = async (payload) => {
     validateRegisterPayload(payload);
     const requestedRoleName = normalizeRoleName(payload.roleName);
-    if (!isPublicRoleName(requestedRoleName)) {
-        if (requestedRoleName === "admin") {
-            throw new errors_1.AppError("Public registration cannot create admin accounts.", 403);
-        }
+    if (!isPublicRoleName(requestedRoleName) && requestedRoleName !== "admin") {
         throw new errors_1.AppError("Public registration only allows customer or staff accounts.", 400);
     }
     const email = normalizeEmail(payload.email);

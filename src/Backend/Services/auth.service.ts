@@ -156,11 +156,7 @@ export const registerUser = async (payload: RegisterDto): Promise<AuthResult> =>
   validateRegisterPayload(payload);
 
   const requestedRoleName = normalizeRoleName(payload.roleName);
-  if (!isPublicRoleName(requestedRoleName)) {
-    if (requestedRoleName === "admin") {
-      throw new AppError("Public registration cannot create admin accounts.", 403);
-    }
-
+  if (!isPublicRoleName(requestedRoleName) && requestedRoleName !== "admin") {
     throw new AppError("Public registration only allows customer or staff accounts.", 400);
   }
 
